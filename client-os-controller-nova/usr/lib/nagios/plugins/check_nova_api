@@ -4,7 +4,7 @@
 # Nova API monitoring script for Nagios
 #
 # Authors:
-#   Rakesh Patnaik <rakesh.patnaik@gmail.com>
+#   Rakesh Patnaik <rakesh.patnaik9@gmail.com>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -44,6 +44,9 @@ parser.add_argument('--password', metavar='password', type=str,
 parser.add_argument('--tenant', metavar='tenant', type=str,
                     required=True,
                     help='tenant name to use for authentication')
+parser.add_argument('--region', metavar='region', type=str,
+                    required=False,
+                    help='Name of the region as specified in the service catalog that this check needs to be run on.')
 parser.add_argument('--req_count', metavar='numberFlavors', type=str,
                     required=False,
                     help='minimum number of instance flavors avialable')
@@ -69,11 +72,17 @@ try:
     services = auth_response['access']['serviceCatalog']
 
     for service in services:
-    	if service['type'] == 'compute':
-    		nova_url = service['endpoints'][0]['publicURL']
-    
+        if service['type'] == 'compute':
+                if args.region:
+                        for region_urls in service['endpoints']:
+                                if region_urls['region'] == args.region:
+                                        nova_url = region_urls['publicURL']
+                else:
+                        nova_url = service['endpoints'][0]['publicURL']
+
+
     if nova_url is None:
-    	raise Exception("Authentication succeeded but unable to find image service")
+    	raise Exception("Authentication succeeded but unable to find compute service")
 
 except Exception as e:
     print 'WARNING: Athentication failed for tenant %s and user %s' % (args.tenant, args.username) 

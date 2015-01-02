@@ -44,6 +44,9 @@ parser.add_argument('--password', metavar='password', type=str,
 parser.add_argument('--tenant', metavar='tenant', type=str,
                     required=True,
                     help='tenant name to use for authentication')
+parser.add_argument('--region', metavar='region', type=str,
+                    required=False,
+                    help='Name of the region as specified in the service catalog that this check needs to be run on.')
 parser.add_argument('--req_count', metavar='numberImages', type=str,
                     required=False,
                     help='minimum number of images in glance')
@@ -69,9 +72,15 @@ try:
     services = auth_response['access']['serviceCatalog']
 
     for service in services:
-    	if service['type'] == 'image':
-    		glance_url = service['endpoints'][0]['publicURL']
-    
+        if service['type'] == 'image':
+                if args.region:
+                        for region_urls in service['endpoints']:
+                                if region_urls['region'] == args.region:
+                                        glance_url = region_urls['publicURL']
+                else:
+                        glance_url = service['endpoints'][0]['publicURL']
+
+
     if glance_url is None:
     	raise Exception("Authentication succeeded but unable to find image service")
 

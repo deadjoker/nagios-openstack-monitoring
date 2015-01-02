@@ -4,7 +4,7 @@
 # Cinder API monitoring script for Nagios
 #
 # Authors:
-#   Rakesh Patnaik <rakesh.patnaik@gmail.com>
+#   Rakesh Patnaik <rakesh.patnaik9@gmail.com>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -44,6 +44,13 @@ parser.add_argument('--password', metavar='password', type=str,
 parser.add_argument('--tenant', metavar='tenant', type=str,
                     required=True,
                     help='tenant name to use for authentication')
+parser.add_argument('--region', metavar='region', type=str,
+                    required=False,
+                    help='Name of the region as specified in the service catalog that this check needs to be run on.')
+parser.add_argument('--req_count', metavar='numberVolumes', type=str,
+                    required=False,
+                    help='minimum number of volumes required or expected to return')
+
 args = parser.parse_args()
 
 headers = {'content-type': 'application/json'}
@@ -70,11 +77,17 @@ try:
     services = auth_response['access']['serviceCatalog']
 
     for service in services:
-    	if service['type'] == 'volume':
-    		cinder_url = service['endpoints'][0]['publicURL']
-    
+        if service['type'] == 'volume':
+                if args.region:
+                        for region_urls in service['endpoints']:
+                                if region_urls['region'] == args.region:
+                                        cinder_url = region_urls['publicURL']
+                else:
+                        cinder_url = service['endpoints'][0]['publicURL']
+
+
     if cinder_url is None:
-    	raise Exception("Authentication succeeded but unable to find cinder service")
+    	raise Exception("Authentication succeeded but unable to find volume service")
 
 except Exception as e:
     print 'WARNING: Athentication failed for tenant %s and user %s' % (args.tenant, args.username) 
@@ -83,17 +96,22 @@ except Exception as e:
 headers['X-Auth-Token'] = auth_token  
 
 try:
-   cinder_quota_set_response = requests.get(cinder_url + '/os-quota-sets/' + tenant_id, headers=headers).json()
-   quota_set_id  = cinder_quota_set_response['quota_set']['id']
-   number_of_volumes = cinder_quota_set_response['quota_set']['volumes']
-   if not quota_set_id:
-   	print 'CRITICAL: Unable to retrieve quota_set for tenant %s' % (args.tenant) 
+   cinder_volumes_response = requests.get(cinder_url + '/volumes', headers=headers).json()
+   volume_count = 0
+   for volume in cinder_volumes_response['volumes']:
+   	volume_count += 1
+   
+   if args.req_count and volume_count < int(args.req_count):
+   	print "CRITICAL: Number of volumes found: %d less than required %d" % (volume_count, int(args.req_count)) 
    	sys.exit(STATE_CRITICAL)
+   
+   if args.req_count: 
+   	print "OK: Retrieved %d volumes, required %d" % (volume_count, int(args.req_count))
    else:
-   	print 'OK: Tenant %s has quota of %d volumes' % (args.tenant, number_of_volumes)
-
+   	print "OK: Retrieved volumes. Volume count is %d" % (volume_count)
+   
 except Exception as e:
-   print 'CRITICAL:Unable to retrieve quota set for tenant %s' % (args.tenant)
+   print 'CRITICAL:Unable to retrieve volumes for tenant %s' % (args.tenant)
    sys.exit(STATE_CRITICAL)
 
 sys.exit(STATE_OK)

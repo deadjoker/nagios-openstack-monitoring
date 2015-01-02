@@ -44,6 +44,9 @@ parser.add_argument('--password', metavar='password', type=str,
 parser.add_argument('--tenant', metavar='tenant', type=str,
                     required=True,
                     help='tenant name to use for authentication')
+parser.add_argument('--region', metavar='region', type=str,
+                    required=False,
+                    help='Name of the region as specified in the service catalog that this check needs to be run on.')
 parser.add_argument('--req_count', metavar='numberNetworks', type=str,
                     required=False,
                     help='minimum number of networks in neutron')
@@ -73,9 +76,15 @@ try:
     services = auth_response['access']['serviceCatalog']
 
     for service in services:
-    	if service['type'] == 'network':
-    		neutron_url = service['endpoints'][0]['publicURL']
-    
+        if service['type'] == 'network':
+                if args.region:
+                        for region_urls in service['endpoints']:
+                                if region_urls['region'] == args.region:
+                                        neutron_url = region_urls['publicURL']
+                else:
+                        neutron_url = service['endpoints'][0]['publicURL']
+
+
     if neutron_url is None:
     	raise Exception("Authentication succeeded but unable to find network service")
 

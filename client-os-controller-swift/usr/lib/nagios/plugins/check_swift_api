@@ -44,6 +44,9 @@ parser.add_argument('--password', metavar='password', type=str,
 parser.add_argument('--tenant', metavar='tenant', type=str,
                     required=True,
                     help='tenant name to use for authentication')
+parser.add_argument('--region', metavar='region', type=str,
+                    required=False,
+                    help='Name of the region as specified in the service catalog that this check needs to be run on.')
 parser.add_argument('--container_name', metavar='containerName', type=str,
                     required=False,
                     help='name of the container to create and delete')
@@ -69,9 +72,15 @@ try:
     services = auth_response['access']['serviceCatalog']
 
     for service in services:
-    	if service['type'] == 'object-store':
-    		swift_url = service['endpoints'][0]['publicURL']
-    
+        if service['type'] == 'object-store':
+                if args.region:
+                        for region_urls in service['endpoints']:
+                                if region_urls['region'] == args.region:
+                                        swift_url = region_urls['publicURL']
+                else:
+                        swift_url = service['endpoints'][0]['publicURL']
+
+
     if swift_url is None:
     	raise Exception("Authentication succeeded but unable to find object-store service")
 
