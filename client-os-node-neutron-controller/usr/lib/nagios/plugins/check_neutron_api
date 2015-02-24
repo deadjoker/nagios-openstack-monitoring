@@ -50,6 +50,12 @@ parser.add_argument('--region', metavar='region', type=str,
 parser.add_argument('--req_count', metavar='numberNetworks', type=str,
                     required=False,
                     help='minimum number of networks in neutron')
+parser.add_argument('--neutron_url', metavar='http://controller:9696', type=str,
+                    required=False,
+                    help='`Neutron endpoint to use, in stead of the one returned by Keystone.')
+parser.add_argument('--insecure', action='store_false', dest='verify',
+                    required=False,
+                    help='Disable SSL verification.')
 args = parser.parse_args()
 
 headers = {'content-type': 'application/json'}
@@ -64,7 +70,7 @@ try:
 
     auth_request = '{"auth":{"tenantName": "' + args.tenant + '", "passwordCredentials": {"username": "' +  args.username + '", "password": "' + args.password + '"}}}'
 
-    auth_response = requests.post(args.auth_url + '/tokens', data=auth_request, headers=headers).json();
+    auth_response = requests.post(args.auth_url + '/tokens', data=auth_request, headers=headers, verify=args.verify).json();
 
     if not auth_response['access']['token']['id']:
         raise Exception("Authentication failed. Failed to get an auth token.")
@@ -72,17 +78,20 @@ try:
     auth_token = auth_response['access']['token']['id']
 
     tenant_id = auth_response['access']['token']['tenant']['id']
-	
+
     services = auth_response['access']['serviceCatalog']
 
-    for service in services:
-        if service['type'] == 'network':
+    if args.neutron_url is None:
+        for service in services:
+            if service['type'] == 'network':
                 if args.region:
-                        for region_urls in service['endpoints']:
-                                if region_urls['region'] == args.region:
-                                        neutron_url = region_urls['publicURL']
+                    for region_urls in service['endpoints']:
+                        if region_urls['region'] == args.region:
+                            neutron_url = region_urls['publicURL']
                 else:
-                        neutron_url = service['endpoints'][0]['publicURL']
+                    neutron_url = service['endpoints'][0]['publicURL']
+    else:
+        neutron_url = args.neutron_url
 
 
     if neutron_url is None:
@@ -95,23 +104,23 @@ except Exception as e:
 headers['X-Auth-Token'] = auth_token  
 
 try:
-   neutron_networks_response = requests.get(neutron_url + '/v2.0/networks', headers=headers).json()
-   network_count = 0
-   for network in neutron_networks_response['networks']:
+    neutron_networks_response = requests.get(neutron_url + '/v2.0/networks', headers=headers, verify=args.verify).json()
+    network_count = 0
+    for network in neutron_networks_response['networks']:
         network_count += 1
  
-   if args.req_count and network_count < int(args.req_count):
+    if args.req_count and network_count < int(args.req_count):
         print "CRITICAL: %d networks found less than required %d" % (network_count, int(args.req_count))
         sys.exit(STATE_CRITICAL)
 
-   if args.req_count:
+    if args.req_count:
         print "OK: Retrieved %d networks, required %d" % (network_count, int(args.req_count))
-   else:
+    else:
         print "OK: Retrieved %d networks" % (network_count)
 
 
 except Exception as e:
-   print 'CRITICAL:Unable to retrieve networks for tenant %s' % (args.tenant)
-   sys.exit(STATE_CRITICAL)
+    print 'CRITICAL:Unable to retrieve networks for tenant %s' % (args.tenant)
+    sys.exit(STATE_CRITICAL)
 
 sys.exit(STATE_OK)

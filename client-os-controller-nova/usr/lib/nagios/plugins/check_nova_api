@@ -50,6 +50,12 @@ parser.add_argument('--region', metavar='region', type=str,
 parser.add_argument('--req_count', metavar='numberFlavors', type=str,
                     required=False,
                     help='minimum number of instance flavors avialable')
+parser.add_argument('--nova_url', metavar='http://controller:8774/v2', type=str,
+                    required=False,
+                    help='Nova endpoint to use, in stead of the one returned by Keystone.')
+parser.add_argument('--insecure', action='store_false', dest='verify',
+                    required=False,
+                    help='Disable SSL verification.')
 args = parser.parse_args()
 
 headers = {'content-type': 'application/json'}
@@ -62,27 +68,32 @@ try:
 
     auth_request = '{"auth":{"tenantName": "' + args.tenant + '", "passwordCredentials": {"username": "' +  args.username + '", "password": "' + args.password + '"}}}'
 
-    auth_response = requests.post(args.auth_url + '/tokens', data=auth_request, headers=headers).json();
+    auth_response = requests.post(args.auth_url + '/tokens', data=auth_request, headers=headers, verify=args.verify).json();
 
     if not auth_response['access']['token']['id']:
         raise Exception("Authentication failed. Failed to get an auth token.")
 
     auth_token = auth_response['access']['token']['id']
 
+    tenant_id = auth_response['access']['token']['tenant']['id']
+
     services = auth_response['access']['serviceCatalog']
 
-    for service in services:
-        if service['type'] == 'compute':
+    if args.nova_url is None:
+        for service in services:
+            if service['type'] == 'compute':
                 if args.region:
-                        for region_urls in service['endpoints']:
-                                if region_urls['region'] == args.region:
-                                        nova_url = region_urls['publicURL']
+                    for region_urls in service['endpoints']:
+                        if region_urls['region'] == args.region:
+                            nova_url = region_urls['publicURL']
                 else:
-                        nova_url = service['endpoints'][0]['publicURL']
+                    nova_url = service['endpoints'][0]['publicURL']
+    else:
+       nova_url = args.nova_url + "/" + tenant_id
 
 
     if nova_url is None:
-    	raise Exception("Authentication succeeded but unable to find compute service")
+        raise Exception("Authentication succeeded but unable to find compute service")
 
 except Exception as e:
     print 'WARNING: Athentication failed for tenant %s and user %s' % (args.tenant, args.username) 
@@ -91,22 +102,22 @@ except Exception as e:
 headers['X-Auth-Token'] = auth_token  
 
 try:
-   nova_flavor_list_response = requests.get(nova_url + '/flavors', headers=headers).json()
-   flavor_count = 0
-   for flavor in nova_flavor_list_response['flavors']:
-   	flavor_count += 1
-   if args.req_count and flavor_count < int(args.req_count):
-   	print "CRITICAL: %d flavors found less than required %d" % (flavor_count, int(args.req_count)) 
-   	sys.exit(STATE_CRITICAL)
+    nova_flavor_list_response = requests.get(nova_url + '/flavors', headers=headers, verify=args.verify).json()
+    flavor_count = 0
+    for flavor in nova_flavor_list_response['flavors']:
+        flavor_count += 1
+    if args.req_count and flavor_count < int(args.req_count):
+        print "CRITICAL: %d flavors found less than required %d" % (flavor_count, int(args.req_count)) 
+        sys.exit(STATE_CRITICAL)
  
-   if args.req_count: 
-   	print "OK: Retrieved %d flavors, required %d" % (flavor_count, int(args.req_count))
-   else:
-   	print "OK: Retrieved %d flavors" % (flavor_count)
+    if args.req_count: 
+        print "OK: Retrieved %d flavors, required %d" % (flavor_count, int(args.req_count))
+    else:
+        print "OK: Retrieved %d flavors" % (flavor_count)
 
 
 except Exception as e:
-   print 'CRITICAL: Failed to retrieve flavors for tenant %s and user %s' % (args.tenant, args.username) 
-   sys.exit(STATE_CRITICAL)
+    print 'CRITICAL: Failed to retrieve flavors for tenant %s and user %s' % (args.tenant, args.username) 
+    sys.exit(STATE_CRITICAL)
 
 sys.exit(STATE_OK)

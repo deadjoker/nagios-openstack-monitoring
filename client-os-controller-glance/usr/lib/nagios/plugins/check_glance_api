@@ -50,6 +50,12 @@ parser.add_argument('--region', metavar='region', type=str,
 parser.add_argument('--req_count', metavar='numberImages', type=str,
                     required=False,
                     help='minimum number of images in glance')
+parser.add_argument('--glance_url', metavar='http://controller:9292', type=str,
+                    required=False,
+                    help='Glance endpoint to use, in stead of the one returned by Keystone.')
+parser.add_argument('--insecure', action='store_false', dest='verify',
+                    required=False,
+                    help='Disable SSL verification.')
 args = parser.parse_args()
 
 headers = {'content-type': 'application/json'}
@@ -62,7 +68,7 @@ try:
 
     auth_request = '{"auth":{"tenantName": "' + args.tenant + '", "passwordCredentials": {"username": "' +  args.username + '", "password": "' + args.password + '"}}}'
 
-    auth_response = requests.post(args.auth_url + '/tokens', data=auth_request, headers=headers).json();
+    auth_response = requests.post(args.auth_url + '/tokens', data=auth_request, headers=headers, verify=args.verify).json();
 
     if not auth_response['access']['token']['id']:
         raise Exception("Authentication failed. Failed to get an auth token.")
@@ -71,18 +77,20 @@ try:
 
     services = auth_response['access']['serviceCatalog']
 
-    for service in services:
-        if service['type'] == 'image':
+    if args.glance_url is None:
+        for service in services:
+            if service['type'] == 'image':
                 if args.region:
-                        for region_urls in service['endpoints']:
-                                if region_urls['region'] == args.region:
-                                        glance_url = region_urls['publicURL']
+                    for region_urls in service['endpoints']:
+                        if region_urls['region'] == args.region:
+                            glance_url = region_urls['publicURL']
                 else:
-                        glance_url = service['endpoints'][0]['publicURL']
-
+                    glance_url = service['endpoints'][0]['publicURL']
+    else:
+        glance_url = args.glance_url
 
     if glance_url is None:
-    	raise Exception("Authentication succeeded but unable to find image service")
+        raise Exception("Authentication succeeded but unable to find image service")
 
 except Exception as e:
     print 'WARNING: Athentication failed for tenant %s and user %s' % (args.tenant, args.username) 
@@ -91,23 +99,24 @@ except Exception as e:
 headers['X-Auth-Token'] = auth_token  
 
 try:
-   glance_images_list_response = requests.get(glance_url + '/images', headers=headers).json()
-   image_count = 0
-   for image in glance_images_list_response['images']:
-   	image_count += 1
-   if args.req_count and image_count < int(args.req_count):
-   	print "CRITICAL: %d images found less than required %d" % (image_count, int(args.req_count)) 
-   	sys.exit(STATE_CRITICAL)
+    glance_images_list_response = requests.get(glance_url + '/images', headers=headers, verify=args.verify).json()
+    image_count = 0
+    if 'images' in glance_images_list_response:
+        for image in glance_images_list_response['images']:
+            image_count += 1
+        if args.req_count and image_count < int(args.req_count):
+            print "CRITICAL: %d images found less than required %d" % (image_count, int(args.req_count)) 
+            sys.exit(STATE_CRITICAL)
  
-   if args.req_count: 
-   	print "OK: Retrieved %d images, required %d" % (image_count, int(args.req_count))
-   else:
-   	print "OK: Retrieved %d images" % (image_count)
+    if args.req_count: 
+        print "OK: Retrieved %d images, required %d" % (image_count, int(args.req_count))
+    else:
+        print "OK: Retrieved %d images" % (image_count)
 
 
 except Exception as e:
-   print e
-   print 'CRITICAL: Failed to retrieve images for tenant %s and user %s' % (args.tenant, args.username) 
-   sys.exit(STATE_CRITICAL)
+    print e
+    print 'CRITICAL: Failed to retrieve images for tenant %s and user %s' % (args.tenant, args.username) 
+    sys.exit(STATE_CRITICAL)
 
 sys.exit(STATE_OK)
