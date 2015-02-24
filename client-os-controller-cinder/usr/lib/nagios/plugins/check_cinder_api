@@ -97,8 +97,6 @@ try:
     if cinder_url is None:
     	raise Exception("Authentication succeeded but unable to find volume service")
 
-    print cinder_url
-
 except Exception as e:
     print 'WARNING: Athentication failed for tenant %s and user %s' % (args.tenant, args.username) 
     sys.exit(STATE_WARNING)
