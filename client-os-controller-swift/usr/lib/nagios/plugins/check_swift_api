@@ -100,10 +100,10 @@ except Exception as e:
 headers['X-Auth-Token'] = auth_token  
 
 try:
-    get_container_response = requests.get(swift_url + '/' + args.container_name + '?limit=1', headers=headers)
+    get_container_response = requests.get(swift_url + '/' + args.container_name + '?limit=1', headers=headers, verify=args.verify)
     if get_container_response.status_code == 404:
-        requests.put(swift_url + '/' + args.container_name, headers=headers)
-        get_container_response = requests.get(swift_url + '/' + args.container_name + '?limit=1', headers=headers)
+        requests.put(swift_url + '/' + args.container_name, headers=headers, verify=args.verify)
+        get_container_response = requests.get(swift_url + '/' + args.container_name + '?limit=1', headers=headers, verify=args.verify)
     if not (get_container_response.status_code == 200 or get_container_response.status_code == 204):
         print 'CRITICAL: Get container failed with error code: %d' % (get_container_response.status_code)
         sys.exit(STATE_CRITICAL)
