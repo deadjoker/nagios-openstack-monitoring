@@ -47,12 +47,9 @@ parser.add_argument('--tenant', metavar='tenant', type=str,
 parser.add_argument('--region', metavar='region', type=str,
                     required=False,
                     help='Name of the region as specified in the service catalog that this check needs to be run on.')
-parser.add_argument('--container_name', metavar='containerName', type=str,
+parser.add_argument('--container_name', metavar='containerName', type=str, default='test',
                     required=False,
                     help='name of the container to create and delete')
-parser.add_argument('--container', metavar='test', type=str, default='test',
-                    required=False,
-                    help='Swift endpoint to use, in stead of the one returned by Keystone.')
 parser.add_argument('--swift_url', metavar='http://controller:8080/v1', type=str,
                     required=False,
                     help='Swift endpoint to use, in stead of the one returned by Keystone.')
@@ -101,9 +98,6 @@ except Exception as e:
     sys.exit(STATE_WARNING)
 
 headers['X-Auth-Token'] = auth_token  
-
-if not args.container_name:
-    args.container_name=args.container
 
 try:
     get_container_response = requests.get(swift_url + '/' + args.container_name + '?limit=1', headers=headers)
