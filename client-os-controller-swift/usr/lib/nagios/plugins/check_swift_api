@@ -47,9 +47,15 @@ parser.add_argument('--tenant', metavar='tenant', type=str,
 parser.add_argument('--region', metavar='region', type=str,
                     required=False,
                     help='Name of the region as specified in the service catalog that this check needs to be run on.')
-parser.add_argument('--container_name', metavar='containerName', type=str,
+parser.add_argument('--container_name', metavar='containerName', type=str, default='test',
                     required=False,
                     help='name of the container to create and delete')
+parser.add_argument('--swift_url', metavar='http://controller:8080/v1', type=str,
+                    required=False,
+                    help='Swift endpoint to use, in stead of the one returned by Keystone.')
+parser.add_argument('--insecure', action='store_false', dest='verify',
+                    required=False,
+                    help='Disable SSL verification.')
 args = parser.parse_args()
 
 headers = {'content-type': 'application/json'}
@@ -62,7 +68,7 @@ try:
 
     auth_request = '{"auth":{"tenantName": "' + args.tenant + '", "passwordCredentials": {"username": "' +  args.username + '", "password": "' + args.password + '"}}}'
 
-    auth_response = requests.post(args.auth_url + '/tokens', data=auth_request, headers=headers).json();
+    auth_response = requests.post(args.auth_url + '/tokens', data=auth_request, headers=headers, verify=args.verify).json();
 
     if not auth_response['access']['token']['id']:
         raise Exception("Authentication failed. Failed to get an auth token.")
@@ -71,18 +77,21 @@ try:
 
     services = auth_response['access']['serviceCatalog']
 
-    for service in services:
-        if service['type'] == 'object-store':
+    if args.swift_url is None:
+        for service in services:
+            if service['type'] == 'object-store':
                 if args.region:
-                        for region_urls in service['endpoints']:
-                                if region_urls['region'] == args.region:
-                                        swift_url = region_urls['publicURL']
+                    for region_urls in service['endpoints']:
+                        if region_urls['region'] == args.region:
+                            swift_url = region_urls['publicURL']
                 else:
-                        swift_url = service['endpoints'][0]['publicURL']
+                    swift_url = service['endpoints'][0]['publicURL']
+    else:
+        swift_url = args.swift_url
 
 
     if swift_url is None:
-    	raise Exception("Authentication succeeded but unable to find object-store service")
+        raise Exception("Authentication succeeded but unable to find object-store service")
 
 except Exception as e:
     print 'WARNING: Athentication failed for tenant %s and user %s' % (args.tenant, args.username) 
@@ -90,21 +99,18 @@ except Exception as e:
 
 headers['X-Auth-Token'] = auth_token  
 
-if not args.container_name:
-   args.container_name='test'
-
 try:
-   get_container_response = requests.get(swift_url + '/' + args.container_name + '?limit=1', headers=headers)
-   if get_container_response.status_code == 404:
-     requests.put(swift_url + '/' + args.container_name, headers=headers)
-     get_container_response = requests.get(swift_url + '/' + args.container_name + '?limit=1', headers=headers)
-   if not (get_container_response.status_code == 200 or get_container_response.status_code == 204):
-     print 'CRITICAL: Get container failed with error code: %d' % (get_container_response.status_code)
-     sys.exit(STATE_CRITICAL)
+    get_container_response = requests.get(swift_url + '/' + args.container_name + '?limit=1', headers=headers, verify=args.verify)
+    if get_container_response.status_code == 404:
+        requests.put(swift_url + '/' + args.container_name, headers=headers, verify=args.verify)
+        get_container_response = requests.get(swift_url + '/' + args.container_name + '?limit=1', headers=headers, verify=args.verify)
+    if not (get_container_response.status_code == 200 or get_container_response.status_code == 204):
+        print 'CRITICAL: Get container failed with error code: %d' % (get_container_response.status_code)
+        sys.exit(STATE_CRITICAL)
 except Exception as e:
-   print e
-   print 'CRITICAL: Failed to get container for tenant %s and user %s' % (args.tenant, args.username) 
-   sys.exit(STATE_CRITICAL)
+    print e
+    print 'CRITICAL: Failed to get container for tenant %s and user %s' % (args.tenant, args.username) 
+    sys.exit(STATE_CRITICAL)
 
 print 'OK: Listed container %s' % (args.container_name)
 sys.exit(STATE_OK)

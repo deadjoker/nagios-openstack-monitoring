@@ -40,6 +40,9 @@ parser.add_argument('--password', metavar='password', type=str,
 parser.add_argument('--tenant', metavar='tenant', type=str,
                     required=True,
                     help='tenant name to use for authentication')
+parser.add_argument('--insecure', action='store_false', dest='verify',
+                    required=False,
+                    help='Disable SSL verification.')
 args = parser.parse_args()
 
 headers = {'content-type': 'application/json'}
@@ -50,7 +53,7 @@ try:
 
     auth_request = '{"auth":{"tenantName": "' + args.tenant + '", "passwordCredentials": {"username": "' +  args.username + '", "password": "' + args.password + '"}}}'
 
-    auth_response = requests.post(args.auth_url + '/tokens', data=auth_request, headers=headers).json();
+    auth_response = requests.post(args.auth_url + '/tokens', data=auth_request, headers=headers, verify=args.verify).json();
 
     if not auth_response['access']['token']['id']:
         raise Exception("Authentication failed. Failed to get an auth token.")
@@ -58,11 +61,11 @@ try:
     auth_token = auth_response['access']['token']['id']
 
     if auth_token is None:
-    	print 'CRITICAL: Failed to generate an auth token for tenant %s and user %s' % (args.tenant, args.username) 
-    	sys.exit(STATE_CRITICAL)
+        print 'CRITICAL: Failed to generate an auth token for tenant %s and user %s' % (args.tenant, args.username) 
+        sys.exit(STATE_CRITICAL)
 
 except Exception as e:
-    print 'CRITICAL: Athentication failed for tenant %s and user %s' % (args.tenant, args.username) 
+    print 'CRITICAL: Athentication failed for tenant %s and user %s: %s' % (args.tenant, args.username, e.strerror) 
     sys.exit(STATE_CRITICAL)
 
 print 'OK: Successfully generated an auth token for tenant %s and user %s' % (args.tenant, args.username)
